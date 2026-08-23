@@ -78,13 +78,19 @@ async fn run() -> Result<()> {
         sensor_handles,
     )?;
     let mut runtime_task = tokio::spawn(runtime.run(shutdown_receiver.clone()));
-    let mut server_task = tokio::spawn(server::serve(
-        &config.daemon.socket_path,
-        &config.daemon.socket_group,
-        arguments.allow_unsafe_dev,
-        control_sender,
-        shutdown_receiver,
-    ));
+    let socket_path = config.daemon.socket_path.clone();
+    let socket_group = config.daemon.socket_group.clone();
+    let allow_unsafe_dev = arguments.allow_unsafe_dev;
+    let mut server_task = tokio::spawn(async move {
+        server::serve(
+            &socket_path,
+            &socket_group,
+            allow_unsafe_dev,
+            control_sender,
+            shutdown_receiver,
+        )
+        .await
+    });
 
     tokio::select! {
         signal = wait_for_shutdown() => signal?,
@@ -108,9 +114,8 @@ async fn run() -> Result<()> {
 async fn wait_for_shutdown() -> Result<()> {
     #[cfg(unix)]
     {
-        let mut terminate =
-            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-                .context("install SIGTERM handler")?;
+        let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .context("install SIGTERM handler")?;
         tokio::select! {
             result = tokio::signal::ctrl_c() => result.context("wait for Ctrl-C")?,
             _ = terminate.recv() => {},
@@ -130,13 +135,13 @@ fn init_tracing(json: bool) -> Result<()> {
             .with_env_filter(filter)
             .json()
             .try_init()
-            .context("initialize tracing")?;
+            .map_err(|error| anyhow::anyhow!("initialize tracing: {error}"))?;
     } else {
         tracing_subscriber::fmt()
             .with_env_filter(filter)
             .with_target(false)
             .try_init()
-            .context("initialize tracing")?;
+            .map_err(|error| anyhow::anyhow!("initialize tracing: {error}"))?;
     }
     Ok(())
 }
