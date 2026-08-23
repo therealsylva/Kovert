@@ -29,8 +29,8 @@ systemd units.
 
 Serde rejects unknown fields. Validation limits recursion, verifies references,
 requires typed actions, and does not support shell command strings. Custom
-execution uses a scrubbed environment, fixed timeout, bounded output and
-optional digest pinning.
+execution uses a scrubbed environment, fixed timeout, bounded output, safe
+root-only file ownership and mandatory digest pinning.
 
 ### Event storms and feedback loops
 
@@ -68,4 +68,3 @@ secure than manual unlock.
 - Remote administration or cloud policy delivery
 - Covert file collection, secure wipe or self-destruct behaviour
 - Replacement for full-disk encryption, backups or measured boot
-

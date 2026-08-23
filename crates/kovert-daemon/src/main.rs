@@ -53,6 +53,7 @@ async fn run() -> Result<()> {
     let audit = Arc::new(AuditStore::open(
         &config.daemon.state_path,
         config.audit.max_records,
+        arguments.allow_unsafe_dev,
     )?);
     if config.audit.verify_on_start {
         let verified = audit.verify().context("audit chain verification failed")?;
@@ -80,6 +81,7 @@ async fn run() -> Result<()> {
     let mut server_task = tokio::spawn(server::serve(
         &config.daemon.socket_path,
         &config.daemon.socket_group,
+        arguments.allow_unsafe_dev,
         control_sender,
         shutdown_receiver,
     ));

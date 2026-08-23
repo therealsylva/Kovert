@@ -85,6 +85,12 @@ pub fn validate_config(config: &Config) -> Result<(), Vec<ValidationError>> {
 
     let mut vaults = HashSet::new();
     for vault in &config.vaults {
+        if !valid_identifier(&vault.name) {
+            errors.push(ValidationError::Vault {
+                vault: vault.name.clone(),
+                message: "name must match [A-Za-z0-9_.-]+".to_owned(),
+            });
+        }
         if !vaults.insert(vault.name.clone()) {
             errors.push(ValidationError::Duplicate {
                 kind: "vault",
@@ -106,10 +112,26 @@ pub fn validate_config(config: &Config) -> Result<(), Vec<ValidationError>> {
                 message: "gocryptfs requires absolute encrypted_path and mount_path".to_owned(),
             });
         }
+        if vault.keyring_description.as_ref().is_some_and(|description| {
+            description.is_empty()
+                || description.len() > 128
+                || description.chars().any(char::is_control)
+        }) {
+            errors.push(ValidationError::Vault {
+                vault: vault.name.clone(),
+                message: "keyring_description must be 1..=128 printable characters".to_owned(),
+            });
+        }
     }
 
     let mut hotkeys = HashSet::new();
     for hotkey in &config.hotkeys {
+        if !valid_identifier(&hotkey.name) {
+            errors.push(ValidationError::Hotkey {
+                hotkey: hotkey.name.clone(),
+                message: "name must match [A-Za-z0-9_.-]+".to_owned(),
+            });
+        }
         if !hotkeys.insert(hotkey.name.clone()) {
             errors.push(ValidationError::Duplicate {
                 kind: "hotkey",
@@ -128,6 +150,18 @@ pub fn validate_config(config: &Config) -> Result<(), Vec<ValidationError>> {
                 message: "sequence must contain between 1 and 32 keys".to_owned(),
             });
         }
+        if hotkey.within.is_zero() {
+            errors.push(ValidationError::Hotkey {
+                hotkey: hotkey.name.clone(),
+                message: "within must be non-zero".to_owned(),
+            });
+        }
+        if let Some(key) = hotkey.sequence.iter().find(|key| !valid_key_name(key)) {
+            errors.push(ValidationError::Hotkey {
+                hotkey: hotkey.name.clone(),
+                message: format!("unsupported key name: {key}"),
+            });
+        }
     }
 
     let mut rules = HashSet::new();
@@ -144,7 +178,7 @@ pub fn validate_config(config: &Config) -> Result<(), Vec<ValidationError>> {
         if rule.actions.is_empty() {
             errors.push(rule_error(&rule.id, "at least one action is required"));
         }
-        validate_trigger(&rule.trigger, &rule.id, 0, &mut errors);
+        validate_trigger(&rule.trigger, &rule.id, 0, &hotkeys, &mut errors);
         if let Some(condition) = &rule.when {
             validate_condition(condition, &rule.id, 0, &mut errors);
         }
@@ -164,6 +198,7 @@ fn validate_trigger(
     trigger: &TriggerSpec,
     rule: &str,
     depth: usize,
+    hotkeys: &HashSet<String>,
     errors: &mut Vec<ValidationError>,
 ) {
     if depth > 16 {
@@ -178,15 +213,29 @@ fn validate_trigger(
             battery_below: Some(value),
             ..
         } if *value > 100 => errors.push(rule_error(rule, "battery threshold must be 0..=100")),
+        TriggerSpec::Process { name: None, .. } => {
+            errors.push(rule_error(rule, "process trigger requires name"));
+        }
+        TriggerSpec::Service { name: None, .. } => {
+            errors.push(rule_error(rule, "service trigger requires name"));
+        }
+        TriggerSpec::Port { port: None, .. } => {
+            errors.push(rule_error(rule, "port trigger requires port"));
+        }
+        TriggerSpec::Hotkey { name } if !hotkeys.contains(name) => {
+            errors.push(rule_error(rule, format!("unknown hotkey {name}")));
+        }
         TriggerSpec::All { triggers } | TriggerSpec::Any { triggers } => {
             if triggers.is_empty() {
                 errors.push(rule_error(rule, "composite trigger cannot be empty"));
             }
             for item in triggers {
-                validate_trigger(item, rule, depth + 1, errors);
+                validate_trigger(item, rule, depth + 1, hotkeys, errors);
             }
         }
-        TriggerSpec::Not { trigger } => validate_trigger(trigger, rule, depth + 1, errors),
+        TriggerSpec::Not { trigger } => {
+            validate_trigger(trigger, rule, depth + 1, hotkeys, errors);
+        }
         TriggerSpec::Sequence { steps, within } => {
             if steps.len() < 2 {
                 errors.push(rule_error(rule, "sequence requires at least two steps"));
@@ -198,7 +247,7 @@ fn validate_trigger(
                 if matches!(item, TriggerSpec::Sequence { .. }) {
                     errors.push(rule_error(rule, "nested sequences are not supported"));
                 }
-                validate_trigger(item, rule, depth + 1, errors);
+                validate_trigger(item, rule, depth + 1, hotkeys, errors);
             }
         }
         _ => {}
@@ -243,6 +292,30 @@ fn validate_condition(
             battery_below: Some(value),
             ..
         } if *value > 100 => errors.push(rule_error(rule, "battery threshold must be 0..=100")),
+        ConditionSpec::SensorHealthy { sensor, .. }
+            if !matches!(
+                sensor.as_str(),
+                "wifi"
+                    | "network"
+                    | "usb"
+                    | "mounts"
+                    | "processes"
+                    | "services"
+                    | "ports"
+                    | "sessions"
+                    | "power"
+                    | "hotkeys"
+                    | "filesystem"
+                    | "integrity"
+                    | "configuration"
+                    | "binary"
+                    | "polling"
+                    | "time"
+                    | "manual"
+            ) =>
+        {
+            errors.push(rule_error(rule, format!("unknown sensor {sensor}")));
+        }
         _ => {}
     }
 }
@@ -341,6 +414,51 @@ fn rule_error(rule: &str, message: impl Into<String>) -> ValidationError {
 fn valid_identifier(value: &str) -> bool {
     Regex::new(r"^[A-Za-z0-9_.-]+$")
         .is_ok_and(|regex| regex.is_match(value))
+}
+
+fn valid_key_name(value: &str) -> bool {
+    let normalized = value.trim().to_ascii_uppercase();
+    let key = normalized.strip_prefix("KEY_").unwrap_or(&normalized);
+    (key.len() == 1 && key.as_bytes()[0].is_ascii_alphanumeric())
+        || matches!(
+            key,
+            "ESC"
+                | "ENTER"
+                | "LEFTCTRL"
+                | "CTRL"
+                | "LEFTSHIFT"
+                | "SHIFT"
+                | "LEFTALT"
+                | "ALT"
+                | "SPACE"
+                | "F1"
+                | "F2"
+                | "F3"
+                | "F4"
+                | "F5"
+                | "F6"
+                | "F7"
+                | "F8"
+                | "F9"
+                | "F10"
+                | "F11"
+                | "F12"
+                | "RIGHTCTRL"
+                | "RIGHTALT"
+                | "HOME"
+                | "UP"
+                | "PAGEUP"
+                | "LEFT"
+                | "RIGHT"
+                | "END"
+                | "DOWN"
+                | "PAGEDOWN"
+                | "INSERT"
+                | "DELETE"
+                | "LEFTMETA"
+                | "META"
+                | "RIGHTMETA"
+        )
 }
 
 fn valid_interface_name(value: &str) -> bool {

@@ -1,34 +1,44 @@
-use std::os::unix::fs::{FileTypeExt, PermissionsExt};
+use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
 use std::path::Path;
+use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
-use kovert_core::ipc::{Request, Response};
-use nix::unistd::{Gid, Group, chown};
+use kovert_core::ipc::{IPC_VERSION, RequestEnvelope, Response};
+use nix::unistd::{Group, chown};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::{mpsc, oneshot, watch};
+use tokio::sync::{Semaphore, mpsc, oneshot, watch};
+use tokio::time::timeout;
 use tracing::{info, warn};
 
 use crate::runtime::ControlMessage;
 
 const MAX_REQUEST_SIZE: u64 = 1024 * 1024;
+const MAX_CLIENTS: usize = 64;
+const CLIENT_TIMEOUT: Duration = Duration::from_secs(20);
 
 pub async fn serve(
     socket_path: &Path,
     socket_group: &str,
+    allow_unsafe_dev: bool,
     control_sender: mpsc::Sender<ControlMessage>,
     mut shutdown: watch::Receiver<bool>,
 ) -> Result<()> {
-    prepare_socket(socket_path)?;
+    prepare_socket(socket_path, allow_unsafe_dev)?;
     let listener = UnixListener::bind(socket_path)
         .with_context(|| format!("bind control socket {}", socket_path.display()))?;
-    std::fs::set_permissions(socket_path, std::fs::Permissions::from_mode(0o660))?;
-    let group = Group::from_name(socket_group)
-        .context("resolve socket group")?
-        .ok_or_else(|| anyhow::anyhow!("socket group does not exist: {socket_group}"))?;
-    chown(socket_path, None, Some(Gid::from_raw(group.gid.as_raw())))
-        .context("set control socket group")?;
+    if allow_unsafe_dev {
+        std::fs::set_permissions(socket_path, std::fs::Permissions::from_mode(0o600))?;
+    } else {
+        std::fs::set_permissions(socket_path, std::fs::Permissions::from_mode(0o660))?;
+        let group = Group::from_name(socket_group)
+            .context("resolve socket group")?
+            .ok_or_else(|| anyhow::anyhow!("socket group does not exist: {socket_group}"))?;
+        chown(socket_path, None, Some(group.gid)).context("set control socket group")?;
+    }
     info!(path = %socket_path.display(), group = socket_group, "control socket ready");
+    let permits = Arc::new(Semaphore::new(MAX_CLIENTS));
 
     loop {
         tokio::select! {
@@ -39,10 +49,17 @@ pub async fn serve(
             }
             accepted = listener.accept() => {
                 let (stream, _) = accepted.context("accept control client")?;
+                let Ok(permit) = permits.clone().try_acquire_owned() else {
+                    warn!("control client limit reached");
+                    continue;
+                };
                 let sender = control_sender.clone();
                 tokio::spawn(async move {
-                    if let Err(error) = handle_connection(stream, sender).await {
-                        warn!(%error, "control client failed");
+                    let _permit = permit;
+                    match timeout(CLIENT_TIMEOUT, handle_connection(stream, sender)).await {
+                        Ok(Ok(())) => {}
+                        Ok(Err(error)) => warn!(%error, "control client failed"),
+                        Err(_) => warn!("control client timed out"),
                     }
                 });
             }
@@ -53,12 +70,26 @@ pub async fn serve(
     Ok(())
 }
 
-fn prepare_socket(path: &Path) -> Result<()> {
+fn prepare_socket(path: &Path, allow_unsafe_dev: bool) -> Result<()> {
     let parent = path
         .parent()
         .ok_or_else(|| anyhow::anyhow!("control socket has no parent directory"))?;
     std::fs::create_dir_all(parent)
         .with_context(|| format!("create socket directory {}", parent.display()))?;
+    if !allow_unsafe_dev {
+        let metadata = std::fs::symlink_metadata(parent)
+            .with_context(|| format!("inspect socket directory {}", parent.display()))?;
+        if metadata.file_type().is_symlink()
+            || !metadata.is_dir()
+            || metadata.uid() != 0
+            || metadata.mode() & 0o022 != 0
+        {
+            bail!(
+                "socket directory must be root-owned and not group/world writable: {}",
+                parent.display()
+            )
+        }
+    }
     if let Ok(metadata) = std::fs::symlink_metadata(path) {
         if !metadata.file_type().is_socket() {
             bail!("refusing to replace non-socket path: {}", path.display())
@@ -85,11 +116,23 @@ async fn handle_connection(
         write_response(&mut writer, &Response::error("request exceeds 1 MiB")).await?;
         bail!("oversized request from uid {peer_uid}")
     }
-    let request: Request = serde_json::from_slice(&input).context("parse control request")?;
+    let envelope: RequestEnvelope =
+        serde_json::from_slice(&input).context("parse control request")?;
+    if envelope.version != IPC_VERSION {
+        write_response(
+            &mut writer,
+            &Response::error(format!(
+                "unsupported protocol version {}; daemon supports {IPC_VERSION}",
+                envelope.version
+            )),
+        )
+        .await?;
+        return Ok(());
+    }
     let (response_sender, response_receiver) = oneshot::channel();
     control_sender
         .send(ControlMessage {
-            request,
+            request: envelope.request,
             response: response_sender,
         })
         .await

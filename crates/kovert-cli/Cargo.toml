@@ -14,10 +14,9 @@ path = "src/main.rs"
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
-kovert-core = { path = "../kovert-core" }
+kovert-core = { path = "../kovert-core", version = "0.1.0" }
 serde_json.workspace = true
 tokio.workspace = true
 
 [lints]
 workspace = true
-

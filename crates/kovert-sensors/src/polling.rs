@@ -303,6 +303,22 @@ fn poll_cycle(
     if requirements.sessions {
         if let Some(value) = probe_value("sessions", probe_session(), state, &mut events) {
             if first || state.session.as_ref() != Some(&value) {
+                if value.state != SessionState::LoggedOut
+                    && (first
+                        || state
+                            .session
+                            .as_ref()
+                            .is_some_and(|previous| previous.state == SessionState::LoggedOut))
+                {
+                    events.push(Event::new(
+                        "sessions",
+                        EventKind::Session {
+                            state: SessionState::LoggedIn,
+                            user: value.user.clone(),
+                            remote: value.remote,
+                        },
+                    ));
+                }
                 events.push(Event::new(
                     "sessions",
                     EventKind::Session {
@@ -331,7 +347,9 @@ fn poll_cycle(
         }
     }
 
-    probe_integrity(config_path, executable, state, &mut events);
+    if requirements.integrity {
+        probe_integrity(config_path, executable, state, &mut events);
+    }
     state.initialized = true;
     events
 }
@@ -386,17 +404,14 @@ fn probe_wifi() -> Result<WifiState> {
     }
     let text = String::from_utf8_lossy(&output.stdout);
     for line in text.lines() {
-        let mut fields = line.splitn(3, ':');
-        if fields.next() != Some("yes") {
+        let fields = parse_nmcli_fields(line);
+        if fields.first().map(String::as_str) != Some("yes") {
             continue;
         }
         return Ok(WifiState {
             connected: true,
-            ssid: fields.next().filter(|value| !value.is_empty()).map(str::to_owned),
-            bssid: fields
-                .next()
-                .filter(|value| !value.is_empty())
-                .map(|value| value.replace("\\:", ":")),
+            ssid: fields.get(1).filter(|value| !value.is_empty()).cloned(),
+            bssid: fields.get(2).filter(|value| !value.is_empty()).cloned(),
         });
     }
     Ok(WifiState {
@@ -404,6 +419,29 @@ fn probe_wifi() -> Result<WifiState> {
         ssid: None,
         bssid: None,
     })
+}
+
+fn parse_nmcli_fields(line: &str) -> Vec<String> {
+    let mut fields = vec![String::new()];
+    let mut escaped = false;
+    for character in line.chars() {
+        let last = fields.len() - 1;
+        if escaped {
+            fields[last].push(character);
+            escaped = false;
+        } else if character == '\\' {
+            escaped = true;
+        } else if character == ':' {
+            fields.push(String::new());
+        } else {
+            fields[last].push(character);
+        }
+    }
+    if escaped {
+        let last = fields.len() - 1;
+        fields[last].push('\\');
+    }
+    fields
 }
 
 fn probe_network() -> Result<NetworkState> {
@@ -548,7 +586,13 @@ fn probe_session() -> Result<SessionInfo> {
         bail!("loginctl list-sessions failed")
     }
     let text = String::from_utf8_lossy(&output.stdout);
-    let line = text.lines().next().ok_or_else(|| anyhow!("no login sessions"))?;
+    let Some(line) = text.lines().next() else {
+        return Ok(SessionInfo {
+            state: SessionState::LoggedOut,
+            user: None,
+            remote: false,
+        });
+    };
     let fields: Vec<_> = line.split_whitespace().collect();
     let session_id = *fields.first().ok_or_else(|| anyhow!("invalid loginctl output"))?;
     let user = fields.get(2).map(|value| (*value).to_owned());
@@ -563,6 +607,9 @@ fn probe_session() -> Result<SessionInfo> {
         ])
         .output()
         .context("query login session")?;
+    if !properties.status.success() {
+        bail!("loginctl show-session failed")
+    }
     let values: Vec<_> = String::from_utf8_lossy(&properties.stdout)
         .lines()
         .map(str::to_owned)
@@ -589,12 +636,17 @@ fn probe_power() -> Result<PowerState> {
             let entry = entry?;
             let kind = read_trimmed(entry.path().join("type")).unwrap_or_default();
             if kind == "Mains" || kind == "USB" || kind == "USB_C" {
-                on_ac = read_trimmed(entry.path().join("online"))
+                let supply_online = read_trimmed(entry.path().join("online"))
                     .and_then(|value| value.parse::<u8>().ok())
                     .map(|value| value == 1);
+                if let Some(supply_online) = supply_online {
+                    on_ac = Some(on_ac.unwrap_or(false) || supply_online);
+                }
             } else if kind == "Battery" {
-                battery_percent = read_trimmed(entry.path().join("capacity"))
-                    .and_then(|value| value.parse::<u8>().ok());
+                if battery_percent.is_none() {
+                    battery_percent = read_trimmed(entry.path().join("capacity"))
+                        .and_then(|value| value.parse::<u8>().ok());
+                }
             }
         }
     }
@@ -698,5 +750,13 @@ mod tests {
         let required = BTreeSet::from([(NetworkProtocol::Tcp, 22)]);
         let result = probe_ports(&required);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn parses_escaped_nmcli_fields() {
+        assert_eq!(
+            parse_nmcli_fields(r"yes:ops\:secure:AA\:BB\:CC\:DD\:EE\:FF"),
+            vec!["yes", "ops:secure", "AA:BB:CC:DD:EE:FF"]
+        );
     }
 }

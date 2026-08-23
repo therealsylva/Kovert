@@ -40,9 +40,9 @@ Trigger `type` values:
 - `network_changed`: optional `interface`, `online`, `vpn`
 - `usb`: optional `action`, `vendor_id`, `product_id`, `serial`
 - `mount`: optional `action`, `path`
-- `process`: optional `name`, `running`
-- `service`: optional `name`, `active`
-- `port`: optional `port`, `open`, `protocol`
+- `process`: required `name`, optional `running`
+- `service`: required `name`, optional `active`
+- `port`: required `port`, optional `open`, optional `protocol`
 - `session`: optional `state`, `user`, `remote`
 - `power`: optional `on_ac`, `battery_below`, `lid_closed`
 - `hotkey`: configured hotkey `name`
@@ -90,8 +90,9 @@ Action `type` values:
 - `notify`: `title`, `message`, optional `urgency`
 - `capture_evidence`: absolute `paths`, absolute `destination`
 - `set_mode`: configured `mode`
-- `exec`: allowlisted absolute `executable`, argument array, optional SHA-256,
-  optional uppercase environment map
+- `exec`: allowlisted absolute `executable`, argument array, required SHA-256,
+  optional uppercase environment map. The executable must be a root-owned,
+  non-symlink regular file that is not writable by group or others.
 
 No action accepts a command-line string or invokes `/bin/sh`.
 
@@ -101,4 +102,3 @@ Each `[[hotkeys]]` item contains `name`, absolute `/dev/input/event*` `device`,
 ordered `sequence`, and `within`. Supported names include letters, digits,
 modifiers, arrows, navigation keys and F1 through F12. Prefixes such as
 `KEY_LEFTCTRL` are accepted.
-

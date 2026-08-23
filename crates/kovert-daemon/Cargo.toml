@@ -17,9 +17,9 @@ blake3.workspace = true
 chrono.workspace = true
 clap.workspace = true
 hex.workspace = true
-kovert-actions = { path = "../kovert-actions" }
-kovert-core = { path = "../kovert-core" }
-kovert-sensors = { path = "../kovert-sensors" }
+kovert-actions = { path = "../kovert-actions", version = "0.1.0" }
+kovert-core = { path = "../kovert-core", version = "0.1.0" }
+kovert-sensors = { path = "../kovert-sensors", version = "0.1.0" }
 nix.workspace = true
 parking_lot.workspace = true
 rusqlite.workspace = true
@@ -34,4 +34,3 @@ tempfile.workspace = true
 
 [lints]
 workspace = true
-

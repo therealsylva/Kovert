@@ -1,16 +1,18 @@
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{Parser, Subcommand};
 use kovert_core::config::Config;
 use kovert_core::event::Event;
-use kovert_core::ipc::{Request, Response};
+use kovert_core::ipc::{IPC_VERSION, Request, RequestEnvelope, Response};
 use kovert_core::validate_config;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
 
 const MAX_RESPONSE_SIZE: u64 = 8 * 1024 * 1024;
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
 
 #[derive(Debug, Parser)]
 #[command(name = "kovert", version, about = "Control and inspect the Kovert daemon")]
@@ -118,10 +120,16 @@ fn request_from_command(command: Command) -> Result<Request> {
 }
 
 async fn send(socket: &Path, request: &Request) -> Result<Response> {
+    tokio::time::timeout(REQUEST_TIMEOUT, send_inner(socket, request))
+        .await
+        .context("daemon request timed out")?
+}
+
+async fn send_inner(socket: &Path, request: &Request) -> Result<Response> {
     let mut stream = UnixStream::connect(socket)
         .await
         .with_context(|| format!("connect to {}", socket.display()))?;
-    let bytes = serde_json::to_vec(request)?;
+    let bytes = serde_json::to_vec(&RequestEnvelope::new(request.clone()))?;
     stream.write_all(&bytes).await.context("write request")?;
     stream.shutdown().await.context("finish request")?;
     let mut response = Vec::new();
@@ -133,7 +141,14 @@ async fn send(socket: &Path, request: &Request) -> Result<Response> {
     if response.len() as u64 > MAX_RESPONSE_SIZE {
         bail!("daemon response exceeds 8 MiB")
     }
-    serde_json::from_slice(&response).context("parse daemon response")
+    let response: Response = serde_json::from_slice(&response).context("parse daemon response")?;
+    if response.version != IPC_VERSION {
+        bail!(
+            "unsupported daemon protocol version {}; CLI supports {IPC_VERSION}",
+            response.version
+        )
+    }
+    Ok(response)
 }
 
 fn validate(path: &Path, json: bool) -> Result<()> {

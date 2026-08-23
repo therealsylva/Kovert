@@ -18,6 +18,7 @@ pub struct SensorRequirements {
     pub ports: BTreeSet<(NetworkProtocol, u16)>,
     pub sessions: bool,
     pub power: bool,
+    pub integrity: bool,
 }
 
 impl SensorRequirements {
@@ -56,7 +57,12 @@ fn collect_trigger(trigger: &TriggerSpec, value: &mut SensorRequirements) {
         }
         TriggerSpec::Port { port, protocol, .. } => {
             if let Some(port) = port {
-                value.ports.insert((protocol.unwrap_or_default(), *port));
+                if let Some(protocol) = protocol {
+                    value.ports.insert((*protocol, *port));
+                } else {
+                    value.ports.insert((NetworkProtocol::Tcp, *port));
+                    value.ports.insert((NetworkProtocol::Udp, *port));
+                }
             }
         }
         TriggerSpec::Session { .. } => value.sessions = true,
@@ -71,9 +77,9 @@ fn collect_trigger(trigger: &TriggerSpec, value: &mut SensorRequirements) {
             }
         }
         TriggerSpec::Not { trigger } => collect_trigger(trigger, value),
+        TriggerSpec::IntegrityFailure { .. } => value.integrity = true,
         TriggerSpec::Tick
         | TriggerSpec::Hotkey { .. }
-        | TriggerSpec::IntegrityFailure { .. }
         | TriggerSpec::Manual { .. }
         | TriggerSpec::SensorFailure { .. } => {}
     }
@@ -101,10 +107,18 @@ fn collect_condition(condition: &ConditionSpec, value: &mut SensorRequirements) 
             }
         }
         ConditionSpec::Not { condition } => collect_condition(condition, value),
+        ConditionSpec::SensorHealthy { sensor, .. } => match sensor.as_str() {
+            "wifi" => value.wifi = true,
+            "network" => value.network = true,
+            "usb" => value.usb = true,
+            "mounts" => value.mounts = true,
+            "sessions" => value.sessions = true,
+            "power" => value.power = true,
+            "integrity" | "configuration" | "binary" => value.integrity = true,
+            _ => {}
+        },
         ConditionSpec::TimeWindow { .. }
         | ConditionSpec::Mode { .. }
-        | ConditionSpec::PathExists { .. }
-        | ConditionSpec::SensorHealthy { .. } => {}
+        | ConditionSpec::PathExists { .. } => {}
     }
 }
-

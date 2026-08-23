@@ -1,4 +1,6 @@
-use std::path::Path;
+use std::fs::{OpenOptions, Permissions};
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow, bail};
 use chrono::{DateTime, Utc};
@@ -26,16 +28,39 @@ pub struct AuditStore {
 }
 
 impl AuditStore {
-    pub fn open(path: &Path, max_records: usize) -> Result<Self> {
+    pub fn open(path: &Path, max_records: usize, allow_unsafe: bool) -> Result<Self> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("create state directory {}", parent.display()))?;
+            if !allow_unsafe {
+                verify_state_path(parent, true)?;
+            }
+        }
+        match std::fs::symlink_metadata(path) {
+            Ok(_) => {
+                if !allow_unsafe {
+                    verify_state_path(path, false)?;
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                OpenOptions::new()
+                    .create_new(true)
+                    .write(true)
+                    .mode(0o600)
+                    .open(path)
+                    .with_context(|| format!("create state database {}", path.display()))?;
+            }
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("inspect state database {}", path.display()));
+            }
         }
         let connection = Connection::open(path)
             .with_context(|| format!("open state database {}", path.display()))?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         connection.pragma_update(None, "synchronous", "FULL")?;
         connection.pragma_update(None, "foreign_keys", "ON")?;
+        harden_database_files(path)?;
         connection.execute_batch(
             "
             CREATE TABLE IF NOT EXISTS audit (
@@ -270,6 +295,46 @@ impl AuditStore {
     }
 }
 
+fn verify_state_path(path: &Path, directory: bool) -> Result<()> {
+    let metadata = std::fs::symlink_metadata(path)
+        .with_context(|| format!("inspect state path {}", path.display()))?;
+    let expected_type = if directory {
+        metadata.is_dir()
+    } else {
+        metadata.is_file() && !metadata.file_type().is_symlink()
+    };
+    if !expected_type || metadata.file_type().is_symlink() {
+        bail!("state path has an unsafe file type: {}", path.display())
+    }
+    if metadata.uid() != 0 || metadata.mode() & 0o022 != 0 {
+        bail!(
+            "state path must be root-owned and not group/world writable: {}",
+            path.display()
+        )
+    }
+    Ok(())
+}
+
+fn harden_database_files(path: &Path) -> Result<()> {
+    for candidate in [
+        path.to_path_buf(),
+        sidecar_path(path, "-wal"),
+        sidecar_path(path, "-shm"),
+    ] {
+        if candidate.exists() {
+            std::fs::set_permissions(&candidate, Permissions::from_mode(0o600))
+                .with_context(|| format!("secure database file {}", candidate.display()))?;
+        }
+    }
+    Ok(())
+}
+
+fn sidecar_path(path: &Path, suffix: &str) -> PathBuf {
+    let mut value = path.as_os_str().to_os_string();
+    value.push(suffix);
+    PathBuf::from(value)
+}
+
 fn record_hash(
     previous_hash: &str,
     timestamp: &str,
@@ -326,7 +391,8 @@ mod tests {
     fn detects_audit_tampering() {
         let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("tempdir: {error}"));
         let path = directory.path().join("state.db");
-        let store = AuditStore::open(&path, 100).unwrap_or_else(|error| panic!("open: {error}"));
+        let store =
+            AuditStore::open(&path, 100, true).unwrap_or_else(|error| panic!("open: {error}"));
         store
             .append(None, "test", None, &serde_json::json!({"value": 1}))
             .unwrap_or_else(|error| panic!("append: {error}"));
@@ -339,4 +405,3 @@ mod tests {
         assert!(store.verify().is_err());
     }
 }
-

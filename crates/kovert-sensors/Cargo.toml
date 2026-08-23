@@ -11,14 +11,9 @@ repository.workspace = true
 anyhow.workspace = true
 blake3.workspace = true
 evdev.workspace = true
-kovert-core = { path = "../kovert-core" }
+kovert-core = { path = "../kovert-core", version = "0.1.0" }
 notify.workspace = true
 tokio.workspace = true
-tracing.workspace = true
-
-[dev-dependencies]
-tempfile.workspace = true
 
 [lints]
 workspace = true
-

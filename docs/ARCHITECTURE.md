@@ -65,7 +65,8 @@ permits only vault-lock, network-isolation, and security-mode actions.
 
 Actions never use a shell. External programs receive an absolute executable
 path and argument array in a scrubbed environment. Approved custom programs
-must appear in `daemon.allowed_executables` and may pin a SHA-256 digest.
+must appear in `daemon.allowed_executables`, pass root-ownership and file-mode
+checks, and pin a SHA-256 digest.
 Captured output is bounded to 64 KiB per stream and every child has a timeout.
 
 Metadata evidence records describe existence, type, length, permissions and
@@ -90,4 +91,3 @@ verification for the retained suffix.
 The action ledger is keyed by event ID, rule ID and serialized-action hash. A
 successfully completed action will not be repeated if the same event is
 processed again. Current mode and recovery state survive daemon restarts.
-
