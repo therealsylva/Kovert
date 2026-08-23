@@ -22,7 +22,7 @@ jobs:
       matrix:
         toolchain: [1.85.0, stable]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.toolchain }}
@@ -50,7 +50,7 @@ jobs:
     name: systemd hardening
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Provide executable target for verification
         run: sudo install -m 0755 /bin/true /usr/local/sbin/kovert-daemon
       - name: Verify service file
@@ -60,7 +60,7 @@ jobs:
     name: Shell scripts
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install ShellCheck
         run: sudo apt-get update && sudo apt-get install -y shellcheck
       - name: Check scripts
