@@ -1,9 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
-use kovert_core::config::{
-    ConditionSpec, Config, NetworkProtocol, TriggerSpec,
-};
+use kovert_core::config::{ConditionSpec, Config, NetworkProtocol, TriggerSpec};
 
 /// Minimal sensor surface derived from configured rules.
 #[derive(Debug, Clone, Default)]

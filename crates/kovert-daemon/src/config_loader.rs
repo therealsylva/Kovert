@@ -45,4 +45,3 @@ fn verify_permissions(path: &Path) -> Result<()> {
     }
     Ok(())
 }
-

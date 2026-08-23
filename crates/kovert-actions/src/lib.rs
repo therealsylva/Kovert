@@ -152,8 +152,9 @@ impl ActionExecutor {
                 ensure_absolute(path)?;
                 let executable = command::resolve_tool("umount")?;
                 let args = vec![path.as_os_str().to_owned()];
-                let result = run_command(&executable, &args, None, &[], self.context.command_timeout)
-                    .await?;
+                let result =
+                    run_command(&executable, &args, None, &[], self.context.command_timeout)
+                        .await?;
                 Ok(ActionOutcome::command(
                     format!("unmounted {}", path.display()),
                     result,
@@ -164,8 +165,9 @@ impl ActionExecutor {
                 let executable = command::resolve_tool("nmcli")?;
                 let state = if *enabled { "off" } else { "on" };
                 let args = vec!["networking".into(), state.into()];
-                let result = run_command(&executable, &args, None, &[], self.context.command_timeout)
-                    .await?;
+                let result =
+                    run_command(&executable, &args, None, &[], self.context.command_timeout)
+                        .await?;
                 let mut outcome = ActionOutcome::command(
                     if *enabled {
                         "isolated networking"
@@ -191,8 +193,9 @@ impl ActionExecutor {
                     interface.into(),
                     state.into(),
                 ];
-                let result = run_command(&executable, &args, None, &[], self.context.command_timeout)
-                    .await?;
+                let result =
+                    run_command(&executable, &args, None, &[], self.context.command_timeout)
+                        .await?;
                 Ok(ActionOutcome::command(
                     format!("set interface {interface} {state}"),
                     result,
@@ -208,8 +211,9 @@ impl ActionExecutor {
                     ServiceAction::Restart => "restart",
                 };
                 let args = vec![verb.into(), name.into(), "--no-block".into()];
-                let result = run_command(&executable, &args, None, &[], self.context.command_timeout)
-                    .await?;
+                let result =
+                    run_command(&executable, &args, None, &[], self.context.command_timeout)
+                        .await?;
                 Ok(ActionOutcome::command(
                     format!("requested {verb} for {name}"),
                     result,
@@ -257,8 +261,9 @@ impl ActionExecutor {
                     title.into(),
                     message.into(),
                 ];
-                let result = run_command(&executable, &args, None, &[], self.context.command_timeout)
-                    .await?;
+                let result =
+                    run_command(&executable, &args, None, &[], self.context.command_timeout)
+                        .await?;
                 Ok(ActionOutcome::command(
                     "sent local notification",
                     result,
@@ -385,8 +390,7 @@ fn terminate_named_processes(name: &str, signal: ProcessSignal) -> Result<usize>
         if comm.trim() != name {
             continue;
         }
-        kill(Pid::from_raw(pid as i32), signal)
-            .with_context(|| format!("signal process {pid}"))?;
+        kill(Pid::from_raw(pid as i32), signal).with_context(|| format!("signal process {pid}"))?;
         count += 1;
     }
     Ok(count)
@@ -417,10 +421,16 @@ fn verify_executable_security(path: &Path) -> Result<()> {
     let metadata = std::fs::symlink_metadata(path)
         .with_context(|| format!("inspect executable {}", path.display()))?;
     if !metadata.file_type().is_file() {
-        bail!("approved executable must be a regular file: {}", path.display())
+        bail!(
+            "approved executable must be a regular file: {}",
+            path.display()
+        )
     }
     if metadata.uid() != 0 {
-        bail!("approved executable must be owned by root: {}", path.display())
+        bail!(
+            "approved executable must be owned by root: {}",
+            path.display()
+        )
     }
     if metadata.mode() & 0o022 != 0 {
         bail!(

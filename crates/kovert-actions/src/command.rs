@@ -47,14 +47,7 @@ pub async fn run_command(
     environment: &[(OsString, OsString)],
     command_timeout: Duration,
 ) -> Result<CommandResult> {
-    let raw = run_raw_command(
-        executable,
-        args,
-        secret_stdin,
-        environment,
-        command_timeout,
-    )
-    .await?;
+    let raw = run_raw_command(executable, args, secret_stdin, environment, command_timeout).await?;
     Ok(CommandResult {
         success: raw.success,
         stdout: String::from_utf8_lossy(&raw.stdout).trim().to_owned(),
@@ -116,7 +109,10 @@ async fn run_raw_command(
     if let Some(mut secret) = secret_stdin {
         let mut stdin = child.stdin.take().context("adapter stdin unavailable")?;
         let write_result = async {
-            stdin.write_all(&secret).await.context("write adapter key")?;
+            stdin
+                .write_all(&secret)
+                .await
+                .context("write adapter key")?;
             stdin.write_all(b"\n").await.context("finish adapter key")?;
             stdin.shutdown().await.context("close adapter stdin")
         }

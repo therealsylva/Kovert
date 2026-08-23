@@ -10,4 +10,3 @@ pub use config::{ActionSpec, Config, Rule, TriggerSpec};
 pub use engine::{ActionPlan, PolicyEngine};
 pub use event::{Event, EventKind, SystemSnapshot};
 pub use validation::{ValidationError, validate_config};
-

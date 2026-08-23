@@ -24,64 +24,67 @@ pub fn spawn(config: HotkeyConfig, sender: mpsc::Sender<Event>) -> Result<JoinHa
     let thread = std::thread::Builder::new()
         .name(format!("kovert-hotkey-{}", config.name))
         .spawn(move || {
-        let mut buffer: VecDeque<(u16, Instant)> = VecDeque::with_capacity(sequence.len());
-        loop {
-            match stop_receiver.try_recv() {
-                Ok(()) | Err(TryRecvError::Disconnected) => break,
-                Err(TryRecvError::Empty) => {}
-            }
-            match device.fetch_events() {
-                Ok(events) => {
-                    for event in events {
-                        if event.event_type() != EventType::KEY || event.value() != 1 {
-                            continue;
-                        }
-                        let now = Instant::now();
-                        buffer.push_back((event.code(), now));
-                        while buffer.len() > sequence.len() {
-                            buffer.pop_front();
-                        }
-                        while buffer
-                            .front()
-                            .is_some_and(|(_, at)| now.duration_since(*at) > config.within)
-                        {
-                            buffer.pop_front();
-                        }
-                        if buffer.len() == sequence.len()
-                            && buffer.iter().map(|(code, _)| *code).eq(sequence.iter().copied())
-                        {
-                            buffer.clear();
-                            if sender
-                                .blocking_send(Event::new(
-                                    "hotkeys",
-                                    EventKind::Hotkey {
-                                        name: config.name.clone(),
-                                    },
-                                ))
-                                .is_err()
+            let mut buffer: VecDeque<(u16, Instant)> = VecDeque::with_capacity(sequence.len());
+            loop {
+                match stop_receiver.try_recv() {
+                    Ok(()) | Err(TryRecvError::Disconnected) => break,
+                    Err(TryRecvError::Empty) => {}
+                }
+                match device.fetch_events() {
+                    Ok(events) => {
+                        for event in events {
+                            if event.event_type() != EventType::KEY || event.value() != 1 {
+                                continue;
+                            }
+                            let now = Instant::now();
+                            buffer.push_back((event.code(), now));
+                            while buffer.len() > sequence.len() {
+                                buffer.pop_front();
+                            }
+                            while buffer
+                                .front()
+                                .is_some_and(|(_, at)| now.duration_since(*at) > config.within)
                             {
-                                return;
+                                buffer.pop_front();
+                            }
+                            if buffer.len() == sequence.len()
+                                && buffer
+                                    .iter()
+                                    .map(|(code, _)| *code)
+                                    .eq(sequence.iter().copied())
+                            {
+                                buffer.clear();
+                                if sender
+                                    .blocking_send(Event::new(
+                                        "hotkeys",
+                                        EventKind::Hotkey {
+                                            name: config.name.clone(),
+                                        },
+                                    ))
+                                    .is_err()
+                                {
+                                    return;
+                                }
                             }
                         }
                     }
-                }
-                Err(error) => {
-                    if error.kind() == std::io::ErrorKind::WouldBlock {
-                        std::thread::sleep(std::time::Duration::from_millis(25));
-                        continue;
+                    Err(error) => {
+                        if error.kind() == std::io::ErrorKind::WouldBlock {
+                            std::thread::sleep(std::time::Duration::from_millis(25));
+                            continue;
+                        }
+                        let _ = sender.blocking_send(Event::new(
+                            "hotkeys",
+                            EventKind::SensorFailure {
+                                sensor: "hotkeys".to_owned(),
+                                message: error.to_string(),
+                            },
+                        ));
+                        return;
                     }
-                    let _ = sender.blocking_send(Event::new(
-                        "hotkeys",
-                        EventKind::SensorFailure {
-                            sensor: "hotkeys".to_owned(),
-                            message: error.to_string(),
-                        },
-                    ));
-                    return;
                 }
             }
-        }
-    })
+        })
         .context("spawn hotkey sensor")?;
     Ok(tokio::spawn(async move {
         let _thread = thread;

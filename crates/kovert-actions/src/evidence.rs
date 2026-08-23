@@ -37,7 +37,11 @@ pub fn capture_metadata(paths: &[PathBuf], destination: &Path, event: &Event) ->
         event,
         files,
     };
-    let filename = format!("{}-{}.json", Utc::now().format("%Y%m%dT%H%M%S%.3fZ"), event.id);
+    let filename = format!(
+        "{}-{}.json",
+        Utc::now().format("%Y%m%dT%H%M%S%.3fZ"),
+        event.id
+    );
     let output = destination.join(filename);
     let file = OpenOptions::new()
         .create_new(true)
@@ -83,4 +87,3 @@ fn metadata(path: &PathBuf) -> FileMetadata {
         },
     }
 }
-

@@ -278,9 +278,15 @@ pub enum TriggerSpec {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ConditionSpec {
-    All { conditions: Vec<ConditionSpec> },
-    Any { conditions: Vec<ConditionSpec> },
-    Not { condition: Box<ConditionSpec> },
+    All {
+        conditions: Vec<ConditionSpec>,
+    },
+    Any {
+        conditions: Vec<ConditionSpec>,
+    },
+    Not {
+        condition: Box<ConditionSpec>,
+    },
     TimeWindow {
         start: String,
         end: String,
@@ -299,11 +305,25 @@ pub enum ConditionSpec {
         interface: Option<String>,
         vpn: Option<bool>,
     },
-    Mode { name: String },
-    PathExists { path: PathBuf, exists: bool },
-    Mounted { path: PathBuf, mounted: bool },
-    Process { name: String, running: bool },
-    Service { name: String, active: bool },
+    Mode {
+        name: String,
+    },
+    PathExists {
+        path: PathBuf,
+        exists: bool,
+    },
+    Mounted {
+        path: PathBuf,
+        mounted: bool,
+    },
+    Process {
+        name: String,
+        running: bool,
+    },
+    Service {
+        name: String,
+        active: bool,
+    },
     Port {
         port: u16,
         open: bool,
@@ -320,7 +340,10 @@ pub enum ConditionSpec {
         battery_below: Option<u8>,
         lid_closed: Option<bool>,
     },
-    SensorHealthy { sensor: String, healthy: bool },
+    SensorHealthy {
+        sensor: String,
+        healthy: bool,
+    },
 }
 
 /// Operation observed by the file sensor.
@@ -381,12 +404,26 @@ pub enum Weekday {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ActionSpec {
-    LockVault { vault: String },
-    UnlockVault { vault: String },
-    Unmount { path: PathBuf },
-    NetworkIsolation { enabled: bool },
-    InterfaceState { interface: String, up: bool },
-    Service { name: String, state: ServiceAction },
+    LockVault {
+        vault: String,
+    },
+    UnlockVault {
+        vault: String,
+    },
+    Unmount {
+        path: PathBuf,
+    },
+    NetworkIsolation {
+        enabled: bool,
+    },
+    InterfaceState {
+        interface: String,
+        up: bool,
+    },
+    Service {
+        name: String,
+        state: ServiceAction,
+    },
     TerminateProcess {
         process: String,
         #[serde(default)]
@@ -402,7 +439,9 @@ pub enum ActionSpec {
         paths: Vec<PathBuf>,
         destination: PathBuf,
     },
-    SetMode { mode: String },
+    SetMode {
+        mode: String,
+    },
     Exec {
         executable: PathBuf,
         #[serde(default)]
@@ -460,4 +499,3 @@ pub enum NotificationUrgency {
     Normal,
     Critical,
 }
-

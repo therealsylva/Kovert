@@ -77,7 +77,11 @@ pub fn spawn(
         let mut state = PollState::default();
         loop {
             ticker.tick().await;
-            if sender.send(Event::new("time", EventKind::Tick)).await.is_err() {
+            if sender
+                .send(Event::new("time", EventKind::Tick))
+                .await
+                .is_err()
+            {
                 return;
             }
             let requirements = requirements.clone();
@@ -85,12 +89,7 @@ pub fn spawn(
             let executable = executable.clone();
             let result = tokio::task::spawn_blocking(move || {
                 let mut state = state;
-                let events = poll_cycle(
-                    &requirements,
-                    &config_path,
-                    &executable,
-                    &mut state,
-                );
+                let events = poll_cycle(&requirements, &config_path, &executable, &mut state);
                 (state, events)
             })
             .await;
@@ -594,7 +593,9 @@ fn probe_session() -> Result<SessionInfo> {
         });
     };
     let fields: Vec<_> = line.split_whitespace().collect();
-    let session_id = *fields.first().ok_or_else(|| anyhow!("invalid loginctl output"))?;
+    let session_id = *fields
+        .first()
+        .ok_or_else(|| anyhow!("invalid loginctl output"))?;
     let user = fields.get(2).map(|value| (*value).to_owned());
     let properties = Command::new(&loginctl)
         .env_clear()
@@ -669,12 +670,7 @@ fn probe_integrity(
     state: &mut PollState,
     events: &mut Vec<Event>,
 ) {
-    check_integrity(
-        "configuration",
-        config_path,
-        &mut state.config_hash,
-        events,
-    );
+    check_integrity("configuration", config_path, &mut state.config_hash, events);
     check_integrity("binary", executable, &mut state.binary_hash, events);
 }
 

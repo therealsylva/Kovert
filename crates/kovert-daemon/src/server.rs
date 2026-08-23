@@ -137,7 +137,9 @@ async fn handle_connection(
         })
         .await
         .context("runtime control channel closed")?;
-    let response = response_receiver.await.context("runtime response dropped")?;
+    let response = response_receiver
+        .await
+        .context("runtime response dropped")?;
     write_response(&mut writer, &response).await?;
     info!(peer_uid, ok = response.ok, "served control request");
     Ok(())

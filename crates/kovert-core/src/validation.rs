@@ -104,19 +104,29 @@ pub fn validate_config(config: &Config) -> Result<(), Vec<ValidationError>> {
             });
         }
         if vault.adapter == VaultAdapter::Gocryptfs
-            && (vault.encrypted_path.as_ref().is_none_or(|path| !path.is_absolute())
-                || vault.mount_path.as_ref().is_none_or(|path| !path.is_absolute()))
+            && (vault
+                .encrypted_path
+                .as_ref()
+                .is_none_or(|path| !path.is_absolute())
+                || vault
+                    .mount_path
+                    .as_ref()
+                    .is_none_or(|path| !path.is_absolute()))
         {
             errors.push(ValidationError::Vault {
                 vault: vault.name.clone(),
                 message: "gocryptfs requires absolute encrypted_path and mount_path".to_owned(),
             });
         }
-        if vault.keyring_description.as_ref().is_some_and(|description| {
-            description.is_empty()
-                || description.len() > 128
-                || description.chars().any(char::is_control)
-        }) {
+        if vault
+            .keyring_description
+            .as_ref()
+            .is_some_and(|description| {
+                description.is_empty()
+                    || description.len() > 128
+                    || description.chars().any(char::is_control)
+            })
+        {
             errors.push(ValidationError::Vault {
                 vault: vault.name.clone(),
                 message: "keyring_description must be 1..=128 printable characters".to_owned(),
@@ -183,7 +193,14 @@ pub fn validate_config(config: &Config) -> Result<(), Vec<ValidationError>> {
             validate_condition(condition, &rule.id, 0, &mut errors);
         }
         for action in &rule.actions {
-            validate_action(action, rule.id.as_str(), config, &vaults, &modes, &mut errors);
+            validate_action(
+                action,
+                rule.id.as_str(),
+                config,
+                &vaults,
+                &modes,
+                &mut errors,
+            );
         }
     }
 
@@ -337,9 +354,7 @@ fn validate_action(
         ActionSpec::Unmount { path } if !path.is_absolute() => {
             errors.push(rule_error(rule, "unmount path must be absolute"));
         }
-        ActionSpec::InterfaceState { interface, .. }
-            if !valid_interface_name(interface) =>
-        {
+        ActionSpec::InterfaceState { interface, .. } if !valid_interface_name(interface) => {
             errors.push(rule_error(rule, "invalid network interface name"));
         }
         ActionSpec::Service { name, .. } if !valid_unit_name(name) => {
@@ -367,8 +382,7 @@ fn validate_action(
             environment,
             ..
         } => {
-            if !executable.is_absolute()
-                || !config.daemon.allowed_executables.contains(executable)
+            if !executable.is_absolute() || !config.daemon.allowed_executables.contains(executable)
             {
                 errors.push(rule_error(
                     rule,
@@ -378,11 +392,13 @@ fn validate_action(
                     ),
                 ));
             }
-            if expected_sha256
-                .as_ref()
-                .is_some_and(|digest| digest.len() != 64 || !digest.chars().all(|ch| ch.is_ascii_hexdigit()))
-            {
-                errors.push(rule_error(rule, "expected_sha256 must be 64 hex characters"));
+            if expected_sha256.as_ref().is_some_and(|digest| {
+                digest.len() != 64 || !digest.chars().all(|ch| ch.is_ascii_hexdigit())
+            }) {
+                errors.push(rule_error(
+                    rule,
+                    "expected_sha256 must be 64 hex characters",
+                ));
             }
             if expected_sha256.is_none() {
                 errors.push(rule_error(
@@ -412,8 +428,7 @@ fn rule_error(rule: &str, message: impl Into<String>) -> ValidationError {
 }
 
 fn valid_identifier(value: &str) -> bool {
-    Regex::new(r"^[A-Za-z0-9_.-]+$")
-        .is_ok_and(|regex| regex.is_match(value))
+    Regex::new(r"^[A-Za-z0-9_.-]+$").is_ok_and(|regex| regex.is_match(value))
 }
 
 fn valid_key_name(value: &str) -> bool {
@@ -498,6 +513,10 @@ type = "tick"
         )
         .unwrap_or_else(|error| panic!("fixture must parse: {error}"));
         let errors = validate_config(&config).expect_err("relative path must fail");
-        assert!(errors.iter().any(|error| error.to_string().contains("absolute")));
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.to_string().contains("absolute"))
+        );
     }
 }

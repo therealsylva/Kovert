@@ -237,4 +237,3 @@ impl SystemSnapshot {
         }
     }
 }
-

@@ -56,7 +56,9 @@ impl Runtime {
             .unwrap_or_else(|| "normal".to_owned());
         let stored_mode = audit.get_state("mode")?;
         let initial_mode = stored_mode
-            .filter(|mode| config.modes.is_empty() || config.modes.iter().any(|item| item.name == *mode))
+            .filter(|mode| {
+                config.modes.is_empty() || config.modes.iter().any(|item| item.name == *mode)
+            })
             .unwrap_or(configured_mode);
         let mut engine = PolicyEngine::new(config.rules.clone(), initial_mode);
         let recovery = audit
@@ -154,13 +156,8 @@ impl Runtime {
             );
             return Ok(());
         }
-        self.audit.record_action(
-            &event_id,
-            &plan.rule_id,
-            &action_hash,
-            "started",
-            None,
-        )?;
+        self.audit
+            .record_action(&event_id, &plan.rule_id, &action_hash, "started", None)?;
         self.audit.append(
             Some(&event_id),
             "action_started",
@@ -171,7 +168,11 @@ impl Runtime {
         match self.executor.execute(&plan.action, event).await {
             Ok(outcome) => {
                 let outcome_value = serde_json::to_value(&outcome)?;
-                let status = if outcome.success { "succeeded" } else { "failed" };
+                let status = if outcome.success {
+                    "succeeded"
+                } else {
+                    "failed"
+                };
                 self.audit.record_action(
                     &event_id,
                     &plan.rule_id,
@@ -193,7 +194,11 @@ impl Runtime {
                     self.apply_effect(outcome.effect)?;
                 }
                 if !outcome.success {
-                    warn!(rule = plan.rule_id, message = outcome.message, "action failed");
+                    warn!(
+                        rule = plan.rule_id,
+                        message = outcome.message,
+                        "action failed"
+                    );
                 }
             }
             Err(error) => {

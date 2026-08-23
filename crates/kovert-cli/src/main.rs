@@ -15,7 +15,11 @@ const MAX_RESPONSE_SIZE: u64 = 8 * 1024 * 1024;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
 
 #[derive(Debug, Parser)]
-#[command(name = "kovert", version, about = "Control and inspect the Kovert daemon")]
+#[command(
+    name = "kovert",
+    version,
+    about = "Control and inspect the Kovert daemon"
+)]
 struct Arguments {
     /// Kovert control socket.
     #[arg(long, default_value = "/run/kovert/kovert.sock", global = true)]
@@ -159,7 +163,10 @@ fn validate(path: &Path, json: bool) -> Result<()> {
     match validate_config(&config) {
         Ok(()) => {
             if json {
-                println!("{}", serde_json::json!({"ok": true, "rules": config.rules.len()}));
+                println!(
+                    "{}",
+                    serde_json::json!({"ok": true, "rules": config.rules.len()})
+                );
             } else {
                 println!("valid configuration: {} rule(s)", config.rules.len());
             }
@@ -192,8 +199,7 @@ fn read_event(path: &Path) -> Result<Event> {
         stdin.read_to_string(&mut value)?;
         value
     } else {
-        std::fs::read_to_string(path)
-            .with_context(|| format!("read event {}", path.display()))?
+        std::fs::read_to_string(path).with_context(|| format!("read event {}", path.display()))?
     };
     serde_json::from_str(&text).context("parse event JSON")
 }
@@ -236,7 +242,10 @@ async fn repl(socket: &Path, json: bool) -> Result<()> {
             "status" => Request::Status,
             "rules" => Request::Rules,
             "audit" => Request::Audit {
-                limit: words.get(1).and_then(|value| value.parse().ok()).unwrap_or(50),
+                limit: words
+                    .get(1)
+                    .and_then(|value| value.parse().ok())
+                    .unwrap_or(50),
             },
             "reload" => Request::Reload,
             "trigger" => Request::Trigger {

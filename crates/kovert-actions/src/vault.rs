@@ -1,9 +1,9 @@
 use std::ffi::OsString;
 use std::time::Duration;
 
+use crate::command::{CommandResult, read_command_bytes, resolve_tool, run_command};
 use anyhow::{Context, Result, bail};
 use kovert_core::config::{VaultAdapter, VaultConfig};
-use crate::command::{CommandResult, read_command_bytes, resolve_tool, run_command};
 
 pub async fn lock_vault(vault: &VaultConfig, timeout: Duration) -> Result<CommandResult> {
     match vault.adapter {
