@@ -245,7 +245,9 @@ impl AuditStore {
     pub fn get_state(&self, key: &str) -> Result<Option<String>> {
         self.connection
             .lock()
-            .query_row("SELECT value FROM state WHERE key = ?1", [key], |row| row.get(0))
+            .query_row("SELECT value FROM state WHERE key = ?1", [key], |row| {
+                row.get(0)
+            })
             .optional()
             .map_err(Into::into)
     }
@@ -259,7 +261,12 @@ impl AuditStore {
         Ok(())
     }
 
-    pub fn action_completed(&self, event_id: &str, rule_id: &str, action_hash: &str) -> Result<bool> {
+    pub fn action_completed(
+        &self,
+        event_id: &str,
+        rule_id: &str,
+        action_hash: &str,
+    ) -> Result<bool> {
         let status = self
             .connection
             .lock()
@@ -289,7 +296,14 @@ impl AuditStore {
                status = excluded.status,
                outcome = excluded.outcome,
                updated_at = excluded.updated_at",
-            params![event_id, rule_id, action_hash, status, outcome, Utc::now().to_rfc3339()],
+            params![
+                event_id,
+                rule_id,
+                action_hash,
+                status,
+                outcome,
+                Utc::now().to_rfc3339()
+            ],
         )?;
         Ok(())
     }
@@ -360,12 +374,12 @@ fn record_hash(
 
 fn prune(transaction: &rusqlite::Transaction<'_>, max_records: usize) -> Result<()> {
     if max_records == 0 {
-        return Ok(())
+        return Ok(());
     }
     let count: i64 = transaction.query_row("SELECT COUNT(*) FROM audit", [], |row| row.get(0))?;
     let excess = (count - max_records as i64).max(0);
     if excess == 0 {
-        return Ok(())
+        return Ok(());
     }
     let (cutoff, anchor): (i64, String) = transaction
         .query_row(
