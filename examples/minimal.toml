@@ -1,0 +1,23 @@
+version = 1
+
+[daemon]
+dry_run = true
+
+[[modes]]
+name = "normal"
+initial = true
+
+[[rules]]
+id = "manual-test"
+description = "Safe manual test rule"
+cooldown = "1s"
+
+[rules.trigger]
+type = "manual"
+name = "test"
+
+[[rules.actions]]
+type = "notify"
+title = "Kovert test"
+message = "Manual test event received"
+

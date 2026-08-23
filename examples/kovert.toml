@@ -1,0 +1,139 @@
+version = 1
+
+[daemon]
+socket_path = "/run/kovert/kovert.sock"
+state_path = "/var/lib/kovert/state.db"
+dry_run = true
+poll_interval = "5s"
+command_timeout = "15s"
+event_buffer = 1024
+socket_group = "kovert"
+allowed_executables = []
+managed_processes = []
+desktop_notifications = false
+
+[audit]
+max_records = 10000
+verify_on_start = true
+
+[[modes]]
+name = "normal"
+description = "Normal workstation policy"
+initial = true
+
+[[modes]]
+name = "hardened"
+description = "Restrictive policy for untrusted environments"
+
+[[modes]]
+name = "travel"
+description = "Travel policy"
+
+[[vaults]]
+name = "operations"
+adapter = "gocryptfs"
+path = "/home/sylva/.local/share/kovert-vaults/operations"
+encrypted_path = "/home/sylva/.local/share/kovert-vaults/operations.cipher"
+mount_path = "/home/sylva/.local/share/kovert-vaults/operations"
+keyring_description = "kovert:operations"
+
+[[hotkeys]]
+name = "panic"
+device = "/dev/input/event0"
+sequence = ["KEY_LEFTCTRL", "KEY_LEFTALT", "KEY_F12"]
+within = "2s"
+
+[[rules]]
+id = "operations-after-hours"
+description = "Lock the operations vault outside working hours"
+priority = 100
+cooldown = "5m"
+on_sensor_failure = "alert"
+
+[rules.trigger]
+type = "tick"
+
+[rules.when]
+type = "time_window"
+start = "09:00"
+end = "17:00"
+outside = true
+weekdays = ["mon", "tue", "wed", "thu", "fri"]
+
+[[rules.actions]]
+type = "lock_vault"
+vault = "operations"
+
+[[rules]]
+id = "panic-sequence"
+description = "Enter hardened mode and lock the vault"
+priority = 1000
+cooldown = "10s"
+
+[rules.trigger]
+type = "hotkey"
+name = "panic"
+
+[[rules.actions]]
+type = "set_mode"
+mode = "hardened"
+
+[[rules.actions]]
+type = "lock_vault"
+vault = "operations"
+
+[[rules.actions]]
+type = "notify"
+title = "Kovert"
+message = "Hardened mode enabled"
+urgency = "critical"
+
+[[rules]]
+id = "protected-file-deleted"
+description = "Record metadata when a protected file is deleted"
+priority = 200
+cooldown = "1s"
+
+[rules.trigger]
+type = "file"
+path = "/home/sylva/Documents/operations"
+operations = ["delete"]
+recursive = true
+
+[[rules.actions]]
+type = "capture_evidence"
+paths = ["/home/sylva/Documents/operations"]
+destination = "/var/lib/kovert/evidence"
+
+[[rules.actions]]
+type = "notify"
+title = "Protected path changed"
+message = "A file was deleted under the protected operations path"
+urgency = "critical"
+
+[[rules]]
+id = "unknown-wifi"
+description = "Enter hardened mode on a Wi-Fi access point other than the pinned BSSID"
+priority = 300
+cooldown = "2m"
+
+[rules.trigger]
+type = "wifi_changed"
+connected = true
+
+[rules.when]
+type = "not"
+
+[rules.when.condition]
+type = "wifi"
+bssid = "34:12:98:AB:CD:EF"
+connected = true
+
+[[rules.actions]]
+type = "set_mode"
+mode = "hardened"
+
+[[rules.actions]]
+type = "lock_vault"
+vault = "operations"
+

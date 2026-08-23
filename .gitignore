@@ -1,0 +1,10 @@
+/target/
+*.db
+*.db-shm
+*.db-wal
+*.log
+*.pid
+.env
+.idea/
+.vscode/
+
