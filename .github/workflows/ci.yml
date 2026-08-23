@@ -40,17 +40,6 @@ jobs:
           retention-days: 7
       - name: Check formatting
         run: cargo fmt --all -- --check
-      - name: Prepare formatted-source snapshot
-        if: failure() && matrix.toolchain == '1.85.0'
-        run: cargo fmt --all
-      - name: Upload formatted-source snapshot
-        if: failure() && matrix.toolchain == '1.85.0'
-        uses: actions/upload-artifact@v4
-        with:
-          name: rustfmt-sources
-          path: crates
-          if-no-files-found: error
-          retention-days: 1
       - name: Run Clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - name: Run tests
