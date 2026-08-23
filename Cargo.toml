@@ -1,0 +1,59 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/kovert-core",
+    "crates/kovert-sensors",
+    "crates/kovert-actions",
+    "crates/kovert-daemon",
+    "crates/kovert-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+authors = ["Sylva"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/therealsylva/Kovert"
+
+[workspace.dependencies]
+anyhow = "1.0"
+async-trait = "0.1"
+blake3 = "1.5"
+chrono = { version = "0.4", features = ["clock", "serde"] }
+clap = { version = "4.5", features = ["derive"] }
+evdev = "0.12"
+hex = "0.4"
+humantime-serde = "1.1"
+libc = "0.2"
+nix = { version = "0.29", features = ["fs", "process", "signal", "user"] }
+notify = "6.1"
+parking_lot = "0.12"
+regex = "1.11"
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+tempfile = "3.14"
+thiserror = "2.0"
+tokio = { version = "1.43", features = ["full"] }
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+uuid = { version = "1.12", features = ["serde", "v4"] }
+zeroize = "1.8"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = "warn"
+unwrap_used = "warn"
+expect_used = "warn"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+

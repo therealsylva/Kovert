@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        target:
+          - x86_64-unknown-linux-gnu
+          - aarch64-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: houseabsolute/actions-rust-cross@v1
+        with:
+          command: build
+          target: ${{ matrix.target }}
+          args: "--release --bin kovert --bin kovert-daemon"
+          strip: true
+      - name: Package binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="kovert-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          mkdir -p "$archive"
+          cp "target/${{ matrix.target }}/release/kovert" "$archive/"
+          cp "target/${{ matrix.target }}/release/kovert-daemon" "$archive/"
+          cp README.md SECURITY.md LICENSE-MIT LICENSE-APACHE "$archive/"
+          cp packaging/kovert.service "$archive/"
+          tar -czf "$archive.tar.gz" "$archive"
+          sha256sum "$archive.tar.gz" > "$archive.tar.gz.sha256"
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            kovert-*.tar.gz
+            kovert-*.tar.gz.sha256
+          generate_release_notes: true
+

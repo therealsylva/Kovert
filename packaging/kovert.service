@@ -1,0 +1,48 @@
+[Unit]
+Description=Kovert programmable host-security daemon
+Documentation=https://github.com/therealsylva/Kovert
+After=local-fs.target dbus.service
+Wants=dbus.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/kovert-daemon --config /etc/kovert/kovert.toml
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=20s
+User=root
+Group=root
+SupplementaryGroups=input
+UMask=0077
+RuntimeDirectory=kovert
+RuntimeDirectoryMode=0750
+StateDirectory=kovert
+StateDirectoryMode=0700
+ConfigurationDirectory=kovert
+ConfigurationDirectoryMode=0750
+NoNewPrivileges=yes
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER CAP_KILL CAP_NET_ADMIN CAP_SYS_ADMIN
+AmbientCapabilities=CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER CAP_KILL CAP_NET_ADMIN CAP_SYS_ADMIN
+ProtectSystem=full
+ProtectHome=false
+PrivateTmp=yes
+PrivateDevices=no
+ProtectHostname=yes
+ProtectClock=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET AF_INET6
+SystemCallArchitectures=native
+SystemCallFilter=@system-service @mount
+ReadWritePaths=/var/lib/kovert /run/kovert
+DevicePolicy=closed
+DeviceAllow=char-input r
+
+[Install]
+WantedBy=multi-user.target
