@@ -1,5 +1,4 @@
 use std::collections::VecDeque;
-use std::sync::mpsc::TryRecvError;
 use std::time::Instant;
 
 use anyhow::{Context, Result, anyhow};
@@ -15,81 +14,64 @@ pub fn spawn(config: HotkeyConfig, sender: mpsc::Sender<Event>) -> Result<JoinHa
         .iter()
         .map(|key| key_code(key).ok_or_else(|| anyhow!("unsupported key name: {key}")))
         .collect::<Result<_>>()?;
-    let mut device = Device::open(&config.device)
+    let device = Device::open(&config.device)
         .with_context(|| format!("open input device {}", config.device.display()))?;
-    device
-        .set_nonblocking(true)
-        .context("enable nonblocking input events")?;
-    let (stop_sender, stop_receiver) = std::sync::mpsc::channel();
-    let thread = std::thread::Builder::new()
-        .name(format!("kovert-hotkey-{}", config.name))
-        .spawn(move || {
-            let mut buffer: VecDeque<(u16, Instant)> = VecDeque::with_capacity(sequence.len());
-            loop {
-                match stop_receiver.try_recv() {
-                    Ok(()) | Err(TryRecvError::Disconnected) => break,
-                    Err(TryRecvError::Empty) => {}
-                }
-                match device.fetch_events() {
-                    Ok(events) => {
-                        for event in events {
-                            if event.event_type() != EventType::KEY || event.value() != 1 {
-                                continue;
-                            }
-                            let now = Instant::now();
-                            buffer.push_back((event.code(), now));
-                            while buffer.len() > sequence.len() {
-                                buffer.pop_front();
-                            }
-                            while buffer
-                                .front()
-                                .is_some_and(|(_, at)| now.duration_since(*at) > config.within)
-                            {
-                                buffer.pop_front();
-                            }
-                            if buffer.len() == sequence.len()
-                                && buffer
-                                    .iter()
-                                    .map(|(code, _)| *code)
-                                    .eq(sequence.iter().copied())
-                            {
-                                buffer.clear();
-                                if sender
-                                    .blocking_send(Event::new(
-                                        "hotkeys",
-                                        EventKind::Hotkey {
-                                            name: config.name.clone(),
-                                        },
-                                    ))
-                                    .is_err()
-                                {
-                                    return;
-                                }
-                            }
-                        }
-                    }
-                    Err(error) => {
-                        if error.kind() == std::io::ErrorKind::WouldBlock {
-                            std::thread::sleep(std::time::Duration::from_millis(25));
-                            continue;
-                        }
-                        let _ = sender.blocking_send(Event::new(
+    let mut stream = device
+        .into_event_stream()
+        .context("create asynchronous input stream")?;
+    Ok(tokio::spawn(async move {
+        let mut buffer: VecDeque<(u16, Instant)> = VecDeque::with_capacity(sequence.len());
+        loop {
+            let event = match stream.next_event().await {
+                Ok(event) => event,
+                Err(error) => {
+                    let _ = sender
+                        .send(Event::new(
                             "hotkeys",
                             EventKind::SensorFailure {
                                 sensor: "hotkeys".to_owned(),
                                 message: error.to_string(),
                             },
-                        ));
-                        return;
-                    }
+                        ))
+                        .await;
+                    return;
+                }
+            };
+            if event.event_type() != EventType::KEY || event.value() != 1 {
+                continue;
+            }
+            let now = Instant::now();
+            buffer.push_back((event.code(), now));
+            while buffer.len() > sequence.len() {
+                buffer.pop_front();
+            }
+            while buffer
+                .front()
+                .is_some_and(|(_, at)| now.duration_since(*at) > config.within)
+            {
+                buffer.pop_front();
+            }
+            if buffer.len() == sequence.len()
+                && buffer
+                    .iter()
+                    .map(|(code, _)| *code)
+                    .eq(sequence.iter().copied())
+            {
+                buffer.clear();
+                if sender
+                    .send(Event::new(
+                        "hotkeys",
+                        EventKind::Hotkey {
+                            name: config.name.clone(),
+                        },
+                    ))
+                    .await
+                    .is_err()
+                {
+                    return;
                 }
             }
-        })
-        .context("spawn hotkey sensor")?;
-    Ok(tokio::spawn(async move {
-        let _thread = thread;
-        let _stop_sender = stop_sender;
-        std::future::pending::<()>().await;
+        }
     }))
 }
 

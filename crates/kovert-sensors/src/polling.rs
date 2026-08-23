@@ -643,11 +643,9 @@ fn probe_power() -> Result<PowerState> {
                 if let Some(supply_online) = supply_online {
                     on_ac = Some(on_ac.unwrap_or(false) || supply_online);
                 }
-            } else if kind == "Battery" {
-                if battery_percent.is_none() {
-                    battery_percent = read_trimmed(entry.path().join("capacity"))
-                        .and_then(|value| value.parse::<u8>().ok());
-                }
+            } else if kind == "Battery" && battery_percent.is_none() {
+                battery_percent = read_trimmed(entry.path().join("capacity"))
+                    .and_then(|value| value.parse::<u8>().ok());
             }
         }
     }

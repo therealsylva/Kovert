@@ -14,7 +14,7 @@ pub fn spawn(
     sender: mpsc::Sender<Event>,
 ) -> Result<JoinHandle<()>> {
     let (ready_sender, ready_receiver) = std::sync::mpsc::sync_channel(1);
-    let (stop_sender, stop_receiver) = std::sync::mpsc::channel();
+    let (stop_sender, stop_receiver) = std::sync::mpsc::channel::<()>();
     let thread = std::thread::Builder::new()
         .name("kovert-filesystem".to_owned())
         .spawn(move || {
