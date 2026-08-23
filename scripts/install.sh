@@ -1,12 +1,13 @@
 #!/bin/sh
 set -eu
+unset CDPATH
 
 if [ "$(id -u)" -ne 0 ]; then
     echo "install.sh must run as root" >&2
     exit 1
 fi
 
-project_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+project_dir=$(cd -- "$(dirname -- "$0")/.." && pwd)
 daemon_binary="$project_dir/target/release/kovert-daemon"
 cli_binary="$project_dir/target/release/kovert"
 
@@ -32,4 +33,3 @@ fi
 systemctl daemon-reload
 systemctl enable --now kovert.service
 echo "Kovert installed. Review /etc/kovert/kovert.toml; it starts in dry-run mode."
-
