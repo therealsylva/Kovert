@@ -4,28 +4,18 @@ use std::time::Duration;
 
 use chrono::{DateTime, Datelike, Local, NaiveTime, Utc};
 
-use crate::config::{ActionSpec, ConditionSpec, Rule, SensorFailurePolicy, TriggerSpec, Weekday};
+use crate::config::{
+    ActionSpec, ConditionSpec, Rule, SensorFailurePolicy, TriggerSpec, Weekday,
+};
 use crate::event::{Event, EventKind, SystemSnapshot};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 struct RuleRuntime {
     last_fired: Option<DateTime<Utc>>,
     armed_at: Option<DateTime<Utc>>,
     fired_once: bool,
     sequence_index: usize,
     sequence_started: Option<DateTime<Utc>>,
-}
-
-impl Default for RuleRuntime {
-    fn default() -> Self {
-        Self {
-            last_fired: None,
-            armed_at: None,
-            fired_once: false,
-            sequence_index: 0,
-            sequence_started: None,
-        }
-    }
 }
 
 /// One action selected after priority and conflict resolution.
@@ -202,9 +192,9 @@ impl PolicyEngine {
 
             let trigger_matches = match &rule.trigger {
                 TriggerSpec::Sequence { steps, within } => {
-                    sequence_matches(runtime, steps, *within, event, &self.snapshot)
+                    sequence_matches(runtime, steps, *within, event)
                 }
-                trigger => trigger_matches(trigger, event, &self.snapshot),
+                trigger => trigger_matches(trigger, event),
             };
 
             if !trigger_matches || !conditions_match {
@@ -253,7 +243,6 @@ fn sequence_matches(
     steps: &[TriggerSpec],
     within: Duration,
     event: &Event,
-    snapshot: &SystemSnapshot,
 ) -> bool {
     if steps.is_empty() {
         return false;
@@ -266,8 +255,8 @@ fn sequence_matches(
         runtime.sequence_started = None;
     }
     let expected = &steps[runtime.sequence_index];
-    if !trigger_matches(expected, event, snapshot) {
-        if trigger_matches(&steps[0], event, snapshot) {
+    if !trigger_matches(expected, event) {
+        if trigger_matches(&steps[0], event) {
             runtime.sequence_index = 1;
             runtime.sequence_started = Some(event.timestamp);
         }
@@ -289,7 +278,7 @@ fn elapsed(later: DateTime<Utc>, earlier: DateTime<Utc>) -> Duration {
     (later - earlier).to_std().unwrap_or_default()
 }
 
-fn trigger_matches(trigger: &TriggerSpec, event: &Event, snapshot: &SystemSnapshot) -> bool {
+fn trigger_matches(trigger: &TriggerSpec, event: &Event) -> bool {
     match (trigger, &event.kind) {
         (TriggerSpec::Tick, EventKind::Tick) => true,
         (
@@ -319,9 +308,7 @@ fn trigger_matches(trigger: &TriggerSpec, event: &Event, snapshot: &SystemSnapsh
             },
         ) => {
             connected.is_none_or(|value| value == *event_connected)
-                && ssid
-                    .as_ref()
-                    .is_none_or(|value| event_ssid.as_ref() == Some(value))
+                && ssid.as_ref().is_none_or(|value| event_ssid.as_ref() == Some(value))
                 && bssid.as_ref().is_none_or(|value| {
                     event_bssid
                         .as_ref()
@@ -427,9 +414,7 @@ fn trigger_matches(trigger: &TriggerSpec, event: &Event, snapshot: &SystemSnapsh
         ) => {
             state.is_none_or(|value| value == *event_state)
                 && remote.is_none_or(|value| value == *event_remote)
-                && user
-                    .as_ref()
-                    .is_none_or(|value| event_user.as_ref() == Some(value))
+                && user.as_ref().is_none_or(|value| event_user.as_ref() == Some(value))
         }
         (
             TriggerSpec::Power {
@@ -445,8 +430,9 @@ fn trigger_matches(trigger: &TriggerSpec, event: &Event, snapshot: &SystemSnapsh
         ) => {
             on_ac.is_none_or(|value| event_ac == &Some(value))
                 && lid_closed.is_none_or(|value| event_lid == &Some(value))
-                && battery_below
-                    .is_none_or(|limit| battery_percent.is_some_and(|actual| actual < limit))
+                && battery_below.is_none_or(|limit| {
+                    battery_percent.is_some_and(|actual| actual < limit)
+                })
         }
         (TriggerSpec::Hotkey { name }, EventKind::Hotkey { name: event_name }) => {
             name == event_name
@@ -458,12 +444,7 @@ fn trigger_matches(trigger: &TriggerSpec, event: &Event, snapshot: &SystemSnapsh
                 valid,
                 ..
             },
-        ) => {
-            !valid
-                && component
-                    .as_ref()
-                    .is_none_or(|value| value == event_component)
-        }
+        ) => !valid && component.as_ref().is_none_or(|value| value == event_component),
         (TriggerSpec::Manual { name }, EventKind::Manual { name: event_name }) => {
             name == event_name
         }
@@ -476,11 +457,11 @@ fn trigger_matches(trigger: &TriggerSpec, event: &Event, snapshot: &SystemSnapsh
         ) => sensor.as_ref().is_none_or(|value| value == event_sensor),
         (TriggerSpec::All { triggers }, _) => triggers
             .iter()
-            .all(|item| trigger_matches(item, event, snapshot)),
+            .all(|item| trigger_matches(item, event)),
         (TriggerSpec::Any { triggers }, _) => triggers
             .iter()
-            .any(|item| trigger_matches(item, event, snapshot)),
-        (TriggerSpec::Not { trigger }, _) => !trigger_matches(trigger, event, snapshot),
+            .any(|item| trigger_matches(item, event)),
+        (TriggerSpec::Not { trigger }, _) => !trigger_matches(trigger, event),
         (TriggerSpec::Sequence { .. }, _) => false,
         _ => false,
     }
@@ -514,8 +495,8 @@ fn condition_matches(condition: &ConditionSpec, snapshot: &SystemSnapshot) -> bo
             } else {
                 now >= start || now <= end
             };
-            let weekday_matches =
-                weekdays.is_empty() || weekdays.contains(&weekday_from_chrono(local_now.weekday()));
+            let weekday_matches = weekdays.is_empty()
+                || weekdays.contains(&weekday_from_chrono(local_now.weekday()));
             weekday_matches && if *outside { !inside } else { inside }
         }
         ConditionSpec::Wifi {
@@ -548,7 +529,9 @@ fn condition_matches(condition: &ConditionSpec, snapshot: &SystemSnapshot) -> bo
         ConditionSpec::Mode { name } => name == &snapshot.mode,
         ConditionSpec::PathExists { path, exists } => path.exists() == *exists,
         ConditionSpec::Mounted { path, mounted } => snapshot.mounts.contains(path) == *mounted,
-        ConditionSpec::Process { name, running } => snapshot.processes.contains(name) == *running,
+        ConditionSpec::Process { name, running } => {
+            snapshot.processes.contains(name) == *running
+        }
         ConditionSpec::Service { name, active } => {
             snapshot.services.get(name).copied().unwrap_or(false) == *active
         }
@@ -600,8 +583,9 @@ fn eq_optional(expected: Option<&String>, actual: Option<&String>) -> bool {
 }
 
 fn eq_optional_ci(expected: Option<&String>, actual: Option<&String>) -> bool {
-    expected
-        .is_none_or(|value| actual.is_some_and(|candidate| candidate.eq_ignore_ascii_case(value)))
+    expected.is_none_or(|value| {
+        actual.is_some_and(|candidate| candidate.eq_ignore_ascii_case(value))
+    })
 }
 
 fn weekday_from_chrono(value: chrono::Weekday) -> Weekday {
@@ -658,10 +642,7 @@ mod tests {
     fn event_at(kind: EventKind, second: i64) -> Event {
         Event {
             id: uuid::Uuid::new_v4(),
-            timestamp: Utc
-                .timestamp_opt(second, 0)
-                .single()
-                .unwrap_or_else(Utc::now),
+            timestamp: Utc.timestamp_opt(second, 0).single().unwrap_or_else(Utc::now),
             source: "test".to_owned(),
             kind,
         }
