@@ -114,8 +114,9 @@ async fn run() -> Result<()> {
 async fn wait_for_shutdown() -> Result<()> {
     #[cfg(unix)]
     {
-        let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .context("install SIGTERM handler")?;
+        let mut terminate =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                .context("install SIGTERM handler")?;
         tokio::select! {
             result = tokio::signal::ctrl_c() => result.context("wait for Ctrl-C")?,
             _ = terminate.recv() => {},
