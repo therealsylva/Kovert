@@ -41,7 +41,7 @@ jobs:
           cp packaging/kovert.service "$archive/"
           tar -czf "$archive.tar.gz" "$archive"
           sha256sum "$archive.tar.gz" > "$archive.tar.gz.sha256"
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: |
             kovert-*.tar.gz
