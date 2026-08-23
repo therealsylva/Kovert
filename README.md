@@ -1,5 +1,9 @@
 # Kovert
 
+<p align="center">
+  <img src="assets/kovert-banner.png" alt="Kovert" width="100%">
+</p>
+
 Kovert is a programmable host-security daemon for Linux. It observes local
 events, evaluates typed event-condition-action policies, and performs a small
 set of controlled defensive operations.
